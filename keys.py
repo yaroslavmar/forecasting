@@ -1,0 +1,1 @@
+QUANDL_KEY = 'zU9r8NbC17kz5iYZrU23'
