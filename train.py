@@ -2,14 +2,14 @@ import pandas as pd
 import numpy as np
 import pickle
 from tensorflow import keras
-import glob
 import datetime
 import matplotlib.pyplot as plt
 import os
 from sklearn import preprocessing
 from keras.utils import to_categorical
 from sklearn.metrics import classification_report
-
+import utils
+import glob
 
 def prepare_train_data(DAY):
 
@@ -116,17 +116,41 @@ def train_model(DAY):
     df_report.to_csv('./data/%s/model/model_report.csv' % DAY)
 
 
+def get_latest_model(DAY):
+    execs_models = glob.glob('./data/20*/model/*', recursive=True)
+    execs_models = [int(x.split('/')[2]) for x in execs_models]
+    execs_models = np.array(execs_models)
+    execs_models = np.unique(execs_models)
+    execs_models = execs_models[execs_models <= int(DAY)]
+    max_execution = execs_models.max()
+    return max_execution
 
 def generate_prediction(DAY, ASSET_NAME):
-    # Import predict data
+
+    # IMPORT PREDICTION DATA
     PATH_PREDICT = './data/%s/predict_data/predict_%s.csv' % (DAY, ASSET_NAME)
     df_predict = pd.read_csv(PATH_PREDICT)
-    print(PATH_PREDICT)
+    df_predict['ASSET'] = ASSET_NAME
 
-    # Import model
-    # Import one hot encoder
-    filehandler = open('./data/%s/model/one_hot_encoder.pkl' % DAY, 'rb')
+    # IMPORT MODEL AND ONE HOT ENCODER
+    DAY_MODEL = get_latest_model(DAY)
+
+    filehandler = open('./data/%s/model/one_hot_encoder.pkl' % DAY_MODEL, 'rb')
     ohe = pickle.load(filehandler)
     X_wide_predict = ohe.transform(np.array(df_predict['ASSET']).reshape(-1, 1))
-    # Predict
-    # Save
+
+    model = keras.models.load_model('./data/%s/model/model' % DAY_MODEL)
+
+    # CREATE PREDICTION
+    df_predict = df_predict.drop(['date', 'ASSET'], axis=1)
+    preds = model.predict((X_wide_predict, df_predict))
+    df_preds = pd.DataFrame(preds)
+    df_preds.columns = ['low', 'mid', 'high']
+    df_preds.insert(0, 'ASSET_NAME', ASSET_NAME)
+    df_preds.insert(0, 'date', DAY)
+
+    # SAVE PREDICTIONS
+    PATH_PREDICTIONS= './data/%s/predictions/prediction_%s.csv' % (DAY, ASSET_NAME)
+    utils.create_if_necessary(PATH_PREDICTIONS)
+    df_preds.to_csv(PATH_PREDICTIONS, index=False)
+

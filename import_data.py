@@ -2,7 +2,7 @@
 import pandas as pd
 import datetime
 import quandl
-from keys import QUANDL_KEY
+from api_keys import QUANDL_KEY
 quandl.ApiConfig.api_key = QUANDL_KEY
 import yaml
 
