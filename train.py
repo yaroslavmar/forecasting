@@ -1,10 +1,14 @@
 import pandas as pd
-import tensorflow as tf
+import numpy as np
+import pickle
 from tensorflow import keras
 import glob
 import datetime
 import matplotlib.pyplot as plt
 import os
+from sklearn import preprocessing
+from keras.utils import to_categorical
+from sklearn.metrics import classification_report
 
 
 def prepare_train_data(DAY):
@@ -12,90 +16,77 @@ def prepare_train_data(DAY):
     TRAIN_FILES = glob.glob('./data/%s/train_data/*' % DAY, recursive=True)
     TRAIN_DATA = []
     for fl in TRAIN_FILES:
-        TRAIN_DATA.append(pd.read_csv(fl))
+        df_asset = pd.read_csv(fl)
+        ASSET_NAME = os.path.basename(fl).replace('train_', '').replace('.csv', '')
+        df_asset['ASSET'] = ASSET_NAME
+        TRAIN_DATA.append(df_asset)
     df_train = pd.concat(TRAIN_DATA)
 
     return df_train
 
 
-def basic_metrics(y_valid, y_proba, DAY, threshold=0):
 
-    df_res = pd.DataFrame({'real':y_valid, 'pred':y_proba[:,0]})
-
-    up_thres = 1+threshold
-    down_thres = 1-threshold
-    df_res['ok_up'] = ((df_res['real'] > up_thres) & (df_res['pred']>up_thres))
-    df_res['ok_down'] = ((df_res['real'] <= down_thres) & (df_res['pred']<=down_thres))
-
-    num_ok_up = df_res['ok_up'].sum()
-    num_ok_down = df_res['ok_down'].sum()
-
-    total_up = df_res[(df_res['real']>up_thres)].shape[0]
-    total_down = df_res[(df_res['real']<=down_thres)].shape[0]
-
-    total_up_pred = df_res[(df_res['pred']>up_thres)].shape[0]
-    total_down_pred = df_res[(df_res['pred']<=down_thres)].shape[0]
-
-    total_recall = (num_ok_up+num_ok_down)/(total_up+total_down)
-    total_precision = (num_ok_up+num_ok_down)/(total_up_pred+total_down_pred)
-
-    up_recall = num_ok_up/total_up
-    up_precision = num_ok_up/total_up_pred
-
-    down_recall = num_ok_down/total_down
-    down_precision = num_ok_down/total_down_pred
-    basic_metrics =  pd.DataFrame(
-        {
-            'total_recall': total_recall,
-            'total_precision': total_precision,
-            'up_recall': up_recall,
-            'up_precision': up_precision,
-            'down_recall': down_recall,
-            'down_precision': down_precision
-        },
-        index=[0]
-    )
-    basic_metrics.to_csv('./data/%s/model/basic_metrics.csv' % DAY)
-
-
-
-
-def train_numeric_model(DAY):
+def train_model(DAY):
 
     os.environ['KMP_DUPLICATE_LIB_OK'] = 'True'
     X = prepare_train_data(DAY)
 
+    # REMOVE OUTLIERS IN TARGET
+    X = X[(X['target']>0.9) & (X['target']<1.1)]
+
+    # SPLIT TARGET INTO CATEGORIES
+    X['target'] = pd.cut(X['target'],[-10000,0.995, 1.005, 10000], labels=[0, 1, 2])
+
+    # TRAIN-VALIDATION SPLIT
     DATE_TRAIN_SPLIT = datetime.datetime.strptime('20170101', '%Y%m%d')
     X['date'] = pd.to_datetime(X['date'])
-    X['target'] = X['target']*1000
-
     X_train = X[X['date'] <= DATE_TRAIN_SPLIT]
     X_valid = X[X['date'] > DATE_TRAIN_SPLIT]
 
-    X_train = X_train[(X_train['target']>0.9*1000) & (X_train['target']<1.1*1000)]
-
+    # ONE HOT ENCODING OF ASSETS
+    categories = np.array(list(set(X['ASSET'].astype(str).values))).reshape(-1, 1)
+    ohe = preprocessing.OneHotEncoder()
+    ohe.fit(categories)
+    X_wide_train = ohe.transform(np.array(X_train['ASSET']).reshape(-1, 1))
+    X_wide_valid = ohe.transform(np.array(X_valid['ASSET']).reshape(-1, 1))
 
     y_train = X_train['target']
     y_valid = X_valid['target']
-    X_train = X_train.drop(['target', 'date'], axis=1)
-    X_valid = X_valid.drop(['target', 'date'], axis=1)
+    X_train = X_train.drop(['target', 'date', 'ASSET'], axis=1)
+    X_valid = X_valid.drop(['target', 'date', 'ASSET'], axis=1)
 
-    INPUT_DIM = X_train.shape[1]
-    model = tf.keras.models.Sequential([
-      tf.keras.layers.Dense(100, input_dim=INPUT_DIM, activation='relu'),
-      tf.keras.layers.Dense(25, activation='linear'),
-      tf.keras.layers.Dense(1, activation='linear')
-    ])
+    labels_train = to_categorical(y_train)
+    labels_valid = to_categorical(y_valid)
 
-    model.compile(loss="mean_squared_error",
-              optimizer=keras.optimizers.Adagrad(learning_rate=0.05),
-              metrics=["mean_squared_error"])
+    # WIDE AND DEEP NEURAL NETWORK
+    INPUT_WIDE = X_wide_train.shape[1]
+    INPUT_DEEP = X_train.shape[1]
+    input_A = keras.layers.Input(shape=[INPUT_WIDE], name="wide_input")
+    input_B = keras.layers.Input(shape=[INPUT_DEEP], name="deep_input")
+    hidden1 = keras.layers.Dense(500, activation="relu")(input_B)
+    hidden2 = keras.layers.Dense(350, activation="relu")(hidden1)
+    hidden3 = keras.layers.Dense(250, activation="relu")(hidden2)
+    hidden4 = keras.layers.Dense(150, activation="relu")(hidden3)
+    hidden5 = keras.layers.Dense(100, activation="relu")(hidden4)
+    concat = keras.layers.concatenate([input_A, hidden5])
+    output = keras.layers.Dense(3, activation='softmax', name="output")(concat)
+    model = keras.Model(inputs=[input_A, input_B], outputs=[output])
 
-    history = model.fit(X_train, y_train, epochs=50,
+    model.compile(loss="categorical_crossentropy",
+                  optimizer=keras.optimizers.SGD(0.01),
+                  metrics=["categorical_accuracy"])
+
+    history = model.fit((X_wide_train, X_train), labels_train, epochs=50,
                     batch_size=32,
-                    validation_data=(X_valid, y_valid))
+                    validation_data=((X_wide_valid, X_valid), labels_valid))
 
-    model.save('./data/%s/model' % DAY)
+    model.save('./data/%s/model/model' % DAY)
+
+    filehandler = open('./data/%s/model/one_hot_encoder.pkl' % DAY, 'wb')
+    pickle.dump(ohe, filehandler)
+
+    # filehandler = open('./data/%s/model/one_hot_encoder.pkl' % DAY, 'rb')
+    # x = pickle.load(filehandler)
     model_history = pd.DataFrame(history.history)
     model_history.to_csv('./data/%s/model/model_history.csv' % DAY, index = False)
 
@@ -104,16 +95,38 @@ def train_numeric_model(DAY):
     plt.grid(True)
     plt.savefig('./data/%s/model/model_history.png' % DAY)
 
+    preds = model.predict((X_wide_valid, X_valid))
+    y_classes = preds.argmax(axis=-1)
+    np.unique(y_classes, return_counts=True)
 
-    y_proba = model.predict(X_valid)
     plt.figure()
-    plt.hist(y_valid, bins=100, label='Real', alpha=0.6)
-    plt.hist(y_proba, bins=100, label='Prediction', alpha=0.6)
-    plt.title('Model scoring distribution on validation dataset')
+    plt.hist(preds[:, 0], bins=50, alpha=0.5, label='Class 0')
+    plt.hist(preds[:, 1], bins=50, alpha=0.5, label='Class 1')
+    plt.hist(preds[:, 2], bins=50, alpha=0.5, label='Class 2')
+    plt.title('Distribution of predicted probabilities')
     plt.legend()
     plt.grid()
-    #plt.show()
-    plt.savefig('./data/%s/model/distrubution_scoring.png' % DAY)
+    plt.savefig('./data/%s/model/probabilities_distribution.png' % DAY)
 
-    basic_metrics(y_valid, y_proba, DAY)
-    #model = tf.keras.models.load_model('./data/%s/model/distrubution_scoring.png' % DAY)
+    y_pred = np.argmax(preds, axis=1)
+    target_names = ['low', 'mid', 'high']
+    model_report = classification_report(y_valid, y_pred, target_names=target_names, output_dict=True)
+    df_report = pd.DataFrame(model_report).transpose()
+    df_report = round(df_report, 4)
+    df_report.to_csv('./data/%s/model/model_report.csv' % DAY)
+
+
+
+def generate_prediction(DAY, ASSET_NAME):
+    # Import predict data
+    PATH_PREDICT = './data/%s/predict_data/predict_%s.csv' % (DAY, ASSET_NAME)
+    df_predict = pd.read_csv(PATH_PREDICT)
+    print(PATH_PREDICT)
+
+    # Import model
+    # Import one hot encoder
+    filehandler = open('./data/%s/model/one_hot_encoder.pkl' % DAY, 'rb')
+    ohe = pickle.load(filehandler)
+    X_wide_predict = ohe.transform(np.array(df_predict['ASSET']).reshape(-1, 1))
+    # Predict
+    # Save
