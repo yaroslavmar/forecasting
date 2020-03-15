@@ -7,7 +7,7 @@ import matplotlib.pyplot as plt
 import os
 from sklearn import preprocessing
 from keras.utils import to_categorical
-from sklearn.metrics import classification_report
+from sklearn.metrics import classification_report, log_loss
 import utils
 import glob
 
@@ -115,6 +115,52 @@ def train_model(DAY):
     df_report = round(df_report, 4)
     df_report.to_csv('./data/%s/model/model_report.csv' % DAY)
 
+def baseline_model(DAY):
+
+    os.environ['KMP_DUPLICATE_LIB_OK'] = 'True'
+    X = prepare_train_data(DAY)
+
+    # REMOVE OUTLIERS IN TARGET
+    X = X[(X['target']>0.9) & (X['target']<1.1)]
+
+    # SPLIT TARGET INTO CATEGORIES
+    X['target'] = pd.cut(X['target'],[-10000,0.995, 1.005, 10000], labels=[0, 1, 2])
+
+    # TRAIN-VALIDATION SPLIT
+    DATE_TRAIN_SPLIT = datetime.datetime.strptime('20170101', '%Y%m%d')
+    X['date'] = pd.to_datetime(X['date'])
+    X_train = X[X['date'] <= DATE_TRAIN_SPLIT]
+    X_valid = X[X['date'] > DATE_TRAIN_SPLIT]
+
+    # BASELINE BY ASSET
+    base_preds = X_train.groupby('ASSET')['target'].value_counts()
+    baseline_assets = base_preds / base_preds.groupby(level=0).sum()
+    baseline_assets = baseline_assets.reset_index(level=0, drop=False)
+    baseline_assets['class'] = baseline_assets.index
+    baseline_assets_preds = baseline_assets.pivot(index='ASSET', columns='class', values='target')
+    baseline_assets_preds = baseline_assets_preds.reset_index()
+    baseline_assets_preds.to_csv('./data/%s/model/baseline_model_scores.csv' % DAY)
+
+    y_valid = X_valid['target']
+
+    X_pred = X_valid[['ASSET']]
+    preds = X_pred.merge(baseline_assets_preds, how='left', on='ASSET')
+    preds = preds.drop('ASSET', axis=1)
+    preds = np.array(preds)
+
+    y_pred = np.argmax(preds, axis=1)
+    target_names = ['low', 'mid', 'high']
+    model_report = classification_report(y_valid, y_pred, target_names=target_names, output_dict=True)
+    df_report = pd.DataFrame(model_report).transpose()
+    df_report = round(df_report, 4)
+    df_report.to_csv('./data/%s/model/baseline_model_report.csv' % DAY)
+
+    log_loss_baseline = log_loss(y_valid, preds)
+    file_ll = open('./data/%s/model/log_loss_baseline.csv' % DAY, "w")
+    file_ll.write(str(log_loss_baseline))
+    file_ll.close()
+
+
 
 def get_latest_model(DAY):
     execs_models = glob.glob('./data/20*/model/*', recursive=True)
@@ -144,8 +190,10 @@ def generate_prediction(DAY, ASSET_NAME):
     # CREATE PREDICTION
     df_predict = df_predict.drop(['date', 'ASSET'], axis=1)
     preds = model.predict((X_wide_predict, df_predict))
+    y_class = preds.argmax(axis=-1)[0]
     df_preds = pd.DataFrame(preds)
     df_preds.columns = ['low', 'mid', 'high']
+    df_preds['class'] = y_class
     df_preds.insert(0, 'ASSET_NAME', ASSET_NAME)
     df_preds.insert(0, 'date', DAY)
 
@@ -153,4 +201,24 @@ def generate_prediction(DAY, ASSET_NAME):
     PATH_PREDICTIONS= './data/%s/predictions/prediction_%s.csv' % (DAY, ASSET_NAME)
     utils.create_if_necessary(PATH_PREDICTIONS)
     df_preds.to_csv(PATH_PREDICTIONS, index=False)
+
+
+def get_recommendations(DAY):
+    PATH_PREDICTIONS = './data/%s/predictions/*' % (DAY)
+    PATH_FILES_PREDICTIONS = glob.glob(PATH_PREDICTIONS, recursive=True)
+
+    PREDICTIONS = []
+    for fl in PATH_FILES_PREDICTIONS:
+        df_asset_preds = pd.read_csv(fl)
+        PREDICTIONS.append(df_asset_preds)
+    df_predictions = pd.concat(PREDICTIONS)
+
+    df_predictions['ratio_high_low'] = df_predictions['high']/df_predictions['low']
+    df_predictions['difference_high_low'] = (df_predictions['high'] - df_predictions['low']).abs()
+    df_recommendations = df_predictions[df_predictions['difference_high_low'] > 0.05]
+    df_recommendations = df_recommendations[df_recommendations['class'] != 1]
+    PATH_RECOMMENDATIONS = './data/%s/recommendations/recommendations.csv' % (DAY)
+    utils.create_if_necessary(PATH_RECOMMENDATIONS)
+    df_recommendations.to_csv(PATH_RECOMMENDATIONS, index=False)
+    print(df_recommendations)
 
