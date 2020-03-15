@@ -34,3 +34,11 @@ The categorical variable representing the currency is captures by he 'wide' feat
 
 Recommend a buy/sell acction based on model's predictions. Recommen 'buy' only if proability of increase of rate is much larger than probability of decrease.
 
+## ToDo
+
+- Add sklearn models (logistic regression, random forest, XGBoost)
+- Send recommendations to email
+- Run univariate data analysis. Compute how good is each individual variable
+- Try recurrent neural networks (LSTM)
+- When creating recommendations take into account the base model. Do not recommend an asset if model's probabilities are similar to baseline probabilities.
+- Backtesting
