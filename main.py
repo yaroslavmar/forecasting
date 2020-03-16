@@ -18,7 +18,7 @@ action = args['action']
 if __name__ == '__main__':
 
     if args['day'] == None:
-        DAY = date.today() - timedelta(2)
+        DAY = date.today() - timedelta(1)
         DAY = DAY.strftime("%Y%m%d")
     else:
         DAY = datetime.strptime(args['day'], "%Y%m%d").date().strftime("%Y%m%d")

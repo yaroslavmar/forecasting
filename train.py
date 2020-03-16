@@ -63,12 +63,12 @@ def train_model(DAY):
     INPUT_DEEP = X_train.shape[1]
     input_A = keras.layers.Input(shape=[INPUT_WIDE], name="wide_input")
     input_B = keras.layers.Input(shape=[INPUT_DEEP], name="deep_input")
-    hidden1 = keras.layers.Dense(500, activation="relu")(input_B)
-    hidden2 = keras.layers.Dense(350, activation="relu")(hidden1)
-    hidden3 = keras.layers.Dense(250, activation="relu")(hidden2)
-    hidden4 = keras.layers.Dense(150, activation="relu")(hidden3)
-    hidden5 = keras.layers.Dense(100, activation="relu")(hidden4)
-    concat = keras.layers.concatenate([input_A, hidden5])
+    hidden1 = keras.layers.Dense(100, activation=keras.layers.ELU())(input_B)
+    hidden2 = keras.layers.Dense(80, activation=keras.layers.ELU())(hidden1)
+    hidden3 = keras.layers.Dense(60, activation=keras.layers.ELU())(hidden2)
+    #hidden4 = keras.layers.Dense(40, activation=keras.layers.ELU())(hidden3)
+    #hidden5 = keras.layers.Dense(20, activation=keras.layers.ELU())(hidden4)
+    concat = keras.layers.concatenate([input_A, hidden3])
     output = keras.layers.Dense(3, activation='softmax', name="output")(concat)
     model = keras.Model(inputs=[input_A, input_B], outputs=[output])
 
@@ -133,19 +133,37 @@ def baseline_model(DAY):
     X_valid = X[X['date'] > DATE_TRAIN_SPLIT]
 
     # BASELINE BY ASSET
-    base_preds = X_train.groupby('ASSET')['target'].value_counts()
-    baseline_assets = base_preds / base_preds.groupby(level=0).sum()
-    baseline_assets = baseline_assets.reset_index(level=0, drop=False)
-    baseline_assets['class'] = baseline_assets.index
-    baseline_assets_preds = baseline_assets.pivot(index='ASSET', columns='class', values='target')
-    baseline_assets_preds = baseline_assets_preds.reset_index()
-    baseline_assets_preds.to_csv('./data/%s/model/baseline_model_scores.csv' % DAY)
+    def compute_baseline_score(df_hist):
+        base_preds = df_hist.groupby('ASSET')['target'].value_counts()
+        baseline_assets = base_preds / base_preds.groupby(level=0).sum()
+        baseline_assets = baseline_assets.reset_index(level=0, drop=False)
+        baseline_assets['class'] = baseline_assets.index
+        baseline_assets_preds = baseline_assets.pivot(index='ASSET', columns='class', values='target')
+        baseline_assets_preds = baseline_assets_preds.reset_index()
+        baseline_assets_preds.columns = ['ASSET_NAME', 'low_baseline', 'mid_baseline', 'high_baseline']
+        return baseline_assets_preds
+
+    # PREDICTIONS USING LAST DATA
+    DAY_FORMAT = datetime.datetime.strptime(DAY, '%Y%m%d')
+    DAY_START_BASELINE = DAY_FORMAT - datetime.timedelta(180)
+    baseline_assets_preds = compute_baseline_score(X[X['date'] > DAY_START_BASELINE])
+    baseline_assets_preds = baseline_assets_preds.fillna(0)
+    PATH_BASELINE_MODEL_PREDICTIONS = './data/%s/model/baseline_model_predictions.csv' % DAY
+    utils.create_if_necessary(PATH_BASELINE_MODEL_PREDICTIONS)
+    baseline_assets_preds.to_csv(PATH_BASELINE_MODEL_PREDICTIONS, index=False)
+
+    # PREDICTIONS WITH TRAIN DATA TO EVALUATE ON VALIDATION DATA
+    DAY_START_BASELINE_TRAIN = DATE_TRAIN_SPLIT - datetime.timedelta(180)
+    baseline_assets_train = compute_baseline_score(X_train[X_train['date'] > DAY_START_BASELINE_TRAIN])
+    baseline_assets_train = baseline_assets_train.fillna(0)
+    baseline_assets_train.to_csv('./data/%s/model/baseline_model_train_predictions.csv' % DAY, index=False)
 
     y_valid = X_valid['target']
 
     X_pred = X_valid[['ASSET']]
-    preds = X_pred.merge(baseline_assets_preds, how='left', on='ASSET')
-    preds = preds.drop('ASSET', axis=1)
+    X_pred.columns = ['ASSET_NAME']
+    preds = X_pred.merge(baseline_assets_preds, how='left', on='ASSET_NAME')
+    preds = preds.drop('ASSET_NAME', axis=1)
     preds = np.array(preds)
 
     y_pred = np.argmax(preds, axis=1)
@@ -204,6 +222,8 @@ def generate_prediction(DAY, ASSET_NAME):
 
 
 def get_recommendations(DAY):
+
+    # Model predictions
     PATH_PREDICTIONS = './data/%s/predictions/*' % (DAY)
     PATH_FILES_PREDICTIONS = glob.glob(PATH_PREDICTIONS, recursive=True)
 
@@ -213,12 +233,26 @@ def get_recommendations(DAY):
         PREDICTIONS.append(df_asset_preds)
     df_predictions = pd.concat(PREDICTIONS)
 
+    # Baseline predictions
+    baseline_pred = pd.read_csv('./data/%s/model/baseline_model_predictions.csv' % DAY)
+
+    # Generate recommendations
+    df_predictions = df_predictions.merge(baseline_pred, on='ASSET_NAME', how='left')
+
     df_predictions['ratio_high_low'] = df_predictions['high']/df_predictions['low']
     df_predictions['difference_high_low'] = (df_predictions['high'] - df_predictions['low']).abs()
-    df_recommendations = df_predictions[df_predictions['difference_high_low'] > 0.05]
-    df_recommendations = df_recommendations[df_recommendations['class'] != 1]
+    df_predictions['difference_low_baseline'] = df_predictions['low'] - df_predictions['low_baseline']
+    df_predictions['difference_high_baseline'] = df_predictions['high'] - df_predictions['high_baseline']
+
+    df_recommendations = df_predictions[df_predictions['class'] != 1]
+    df_recommendations = df_recommendations[df_recommendations['difference_high_low'] > 0.05]
+    df_recommendations = df_recommendations[df_recommendations['difference_low_baseline'] > 0.05]
+    df_recommendations = df_recommendations[df_recommendations['difference_high_baseline'] > 0.05]
+
     PATH_RECOMMENDATIONS = './data/%s/recommendations/recommendations.csv' % (DAY)
     utils.create_if_necessary(PATH_RECOMMENDATIONS)
     df_recommendations.to_csv(PATH_RECOMMENDATIONS, index=False)
+
+    pd.set_option('display.max_columns', 500)
     print(df_recommendations)
 
