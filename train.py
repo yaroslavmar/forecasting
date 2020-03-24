@@ -234,7 +234,8 @@ def get_recommendations(DAY):
     df_predictions = pd.concat(PREDICTIONS)
 
     # Baseline predictions
-    baseline_pred = pd.read_csv('./data/%s/model/baseline_model_predictions.csv' % DAY)
+    DAY_MODEL = get_latest_model(DAY)
+    baseline_pred = pd.read_csv('./data/%s/model/baseline_model_predictions.csv' % DAY_MODEL)
 
     # Generate recommendations
     df_predictions = df_predictions.merge(baseline_pred, on='ASSET_NAME', how='left')
