@@ -24,6 +24,10 @@ def prepare_train_data(DAY):
 
     return df_train
 
+def get_train_test_split_date(X):
+    DAYS_RANGE = round((X.date.max()- X.date.min()).days*0.9)
+    DATE_TRAIN_SPLIT = (X.date.min() + datetime.timedelta(days=DAYS_RANGE))
+    return DATE_TRAIN_SPLIT
 
 
 def train_model(DAY):
@@ -38,8 +42,11 @@ def train_model(DAY):
     X['target'] = pd.cut(X['target'],[-10000,0.995, 1.005, 10000], labels=[0, 1, 2])
 
     # TRAIN-VALIDATION SPLIT
-    DATE_TRAIN_SPLIT = datetime.datetime.strptime('20170101', '%Y%m%d')
     X['date'] = pd.to_datetime(X['date'])
+    DATE_TRAIN_SPLIT = get_train_test_split_date(X)
+    print('Train test date split:', DATE_TRAIN_SPLIT)
+    print('Max date in train', X.date.max())
+
     X_train = X[X['date'] <= DATE_TRAIN_SPLIT]
     X_valid = X[X['date'] > DATE_TRAIN_SPLIT]
 
@@ -127,8 +134,9 @@ def baseline_model(DAY):
     X['target'] = pd.cut(X['target'],[-10000,0.995, 1.005, 10000], labels=[0, 1, 2])
 
     # TRAIN-VALIDATION SPLIT
-    DATE_TRAIN_SPLIT = datetime.datetime.strptime('20170101', '%Y%m%d')
     X['date'] = pd.to_datetime(X['date'])
+    DATE_TRAIN_SPLIT = get_train_test_split_date(X)
+    #DATE_TRAIN_SPLIT = datetime.datetime.strptime('20170101', '%Y%m%d')
     X_train = X[X['date'] <= DATE_TRAIN_SPLIT]
     X_valid = X[X['date'] > DATE_TRAIN_SPLIT]
 

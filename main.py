@@ -2,6 +2,7 @@
 
 from datetime import date, timedelta, datetime
 import argparse
+import pandas as pd
 
 import import_data
 from list_of_assets import ALL_ASSETS
@@ -43,3 +44,30 @@ if __name__ == '__main__':
 
     if action == 'recommendations':
         train.get_recommendations(DAY)
+
+    if action == 'backfill_train':
+        DAYS_BACKFILL = pd.date_range('2019-01-01', DAY, freq='1M')-pd.offsets.MonthBegin(1)
+        DAYS_BACKFILL = [x.strftime("%Y%m%d") for x in DAYS_BACKFILL]
+        for DAY in DAYS_BACKFILL:
+            print('Backfilling day', DAY)
+            # IMPORT DATA
+            print('Import data')
+            for ASSET in ALL_ASSETS:
+                ASSET_NAME = ASSET.replace('/', '_')
+                #import_data.import_data(ASSET)
+                import_data.create_train_predict(ASSET_NAME, DAY)
+            # TRAIN MODELS
+            print('Train models')
+            train.baseline_model(DAY)
+            train.train_model(DAY)
+
+            # # PREDICTIONS
+            # print('Predictions')
+            # for ASSET in ALL_ASSETS:
+            #     print('Prediction for asset', ASSET)
+            #     ASSET_NAME = ASSET.replace('/', '_')
+            #     train.generate_prediction(DAY, ASSET_NAME)
+            #
+            # # RECOMMENDATIONS
+            # print('Recommendations')
+            # train.get_recommendations(DAY)
