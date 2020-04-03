@@ -62,16 +62,17 @@ if __name__ == '__main__':
             train.baseline_model(DAY)
             train.train_model(DAY)
 
-            if action == 'backfill_train':
-                # Run on Mondays!
-                DAYS_BACKFILL = pd.date_range('2019-01-01', DAY, freq='1M') - pd.offsets.MonthBegin(1)
-                DAYS_BACKFILL = pd.date_range(start='2019-01-01', end=DAY,
+    if action == 'backfill_recommendation':
+        # Run on Mondays!
+        DAYS_BACKFILL = pd.date_range('2019-01-01', DAY, freq='1M') - pd.offsets.MonthBegin(1)
+        DAYS_BACKFILL = pd.date_range(start='2019-01-01', end=DAY,
                          freq='W-MON').strftime("%Y%m%d").tolist()
-                for DAY in DAYS_BACKFILL:
-                    print('Predictions')
-                    for ASSET in ALL_ASSETS:
-                        ASSET_NAME = ASSET.replace('/', '_')
-                        train.generate_prediction(DAY, ASSET_NAME)
-                    # RECOMMENDATIONS
-                    print('Recommendations')
-                    train.get_recommendations(DAY)
+        for DAY in DAYS_BACKFILL:
+            print('Predictions')
+            for ASSET in ALL_ASSETS:
+                ASSET_NAME = ASSET.replace('/', '_')
+                import_data.create_train_predict(ASSET_NAME, DAY)
+                train.generate_prediction(DAY, ASSET_NAME)
+            # RECOMMENDATIONS
+            print('Recommendations')
+            train.get_recommendations(DAY)

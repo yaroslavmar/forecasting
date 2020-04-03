@@ -70,9 +70,9 @@ def train_model(DAY):
     INPUT_DEEP = X_train.shape[1]
     input_A = keras.layers.Input(shape=[INPUT_WIDE], name="wide_input")
     input_B = keras.layers.Input(shape=[INPUT_DEEP], name="deep_input")
-    hidden1 = keras.layers.Dense(100, activation=keras.layers.ELU())(input_B)
-    hidden2 = keras.layers.Dense(80, activation=keras.layers.ELU())(hidden1)
-    hidden3 = keras.layers.Dense(60, activation=keras.layers.ELU())(hidden2)
+    hidden1 = keras.layers.Dense(15, activation=keras.layers.ELU())(input_B)
+    hidden2 = keras.layers.Dense(10, activation=keras.layers.ELU())(hidden1)
+    hidden3 = keras.layers.Dense(5, activation=keras.layers.ELU())(hidden2)
     #hidden4 = keras.layers.Dense(40, activation=keras.layers.ELU())(hidden3)
     #hidden5 = keras.layers.Dense(20, activation=keras.layers.ELU())(hidden4)
     concat = keras.layers.concatenate([input_A, hidden3])
@@ -80,12 +80,14 @@ def train_model(DAY):
     model = keras.Model(inputs=[input_A, input_B], outputs=[output])
 
     model.compile(loss="categorical_crossentropy",
-                  optimizer=keras.optimizers.SGD(0.01),
+                  optimizer=keras.optimizers.SGD(0.001),
                   metrics=["categorical_accuracy"])
 
-    history = model.fit((X_wide_train, X_train), labels_train, epochs=50,
-                    batch_size=32,
-                    validation_data=((X_wide_valid, X_valid), labels_valid))
+    callback = keras.callbacks.EarlyStopping(monitor='val_loss', patience=3, mode='min')
+    history = model.fit((X_wide_train, X_train), labels_train, callbacks=[callback],
+                        epochs=100,
+                        batch_size=32,
+                        validation_data=((X_wide_valid, X_valid), labels_valid))
 
     model.save('./data/%s/model/model' % DAY)
 
@@ -206,7 +208,7 @@ def generate_prediction(DAY, ASSET_NAME):
 
     # IMPORT MODEL AND ONE HOT ENCODER
     DAY_MODEL = get_latest_model(DAY)
-    print('Model was trained on:' DAY_MODEL)
+    print('Model was trained on:', DAY_MODEL)
 
     filehandler = open('./data/%s/model/one_hot_encoder.pkl' % DAY_MODEL, 'rb')
     ohe = pickle.load(filehandler)
