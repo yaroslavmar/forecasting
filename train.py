@@ -206,6 +206,7 @@ def generate_prediction(DAY, ASSET_NAME):
 
     # IMPORT MODEL AND ONE HOT ENCODER
     DAY_MODEL = get_latest_model(DAY)
+    print('Model was trained on:' DAY_MODEL)
 
     filehandler = open('./data/%s/model/one_hot_encoder.pkl' % DAY_MODEL, 'rb')
     ohe = pickle.load(filehandler)
