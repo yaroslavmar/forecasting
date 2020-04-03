@@ -10,6 +10,8 @@ Forecasting euro exchange rates
 
 `python main.py -a predict`
 
+`python main.py -a recommendations`
+
 ## Import data 
 
 Data is imported from the European Central Bank via the Quandl API
@@ -28,5 +30,15 @@ The model consists of a deep and wide neural network. There is a single model th
 The categorical variable representing the currency is captures by he 'wide' features in the neural network.
 
 
-## Generate predictions
+## Generate recommedations
 
+Recommend a buy/sell acction based on model's predictions. Recommen 'buy' only if proability of increase of rate is much larger than probability of decrease.
+
+## ToDo
+
+- Add sklearn models (logistic regression, random forest, XGBoost)
+- Send recommendations to email
+- Run univariate data analysis. Compute how good is each individual variable
+- Try recurrent neural networks (LSTM)
+- When creating recommendations take into account the base model. Do not recommend an asset if model's probabilities are similar to baseline probabilities.
+- Backtesting
