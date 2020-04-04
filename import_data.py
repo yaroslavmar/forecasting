@@ -139,8 +139,13 @@ def add_relative_values(df, TARGET_COLUMN, index_lags, type_value):
 
     for i in index_lags:
         df['%s_%s' % (type_value, i)] = df[TARGET_COLUMN].shift(i)
-        df['rel_%s_%s' % (type_value, i)] = df[TARGET_COLUMN] / df['%s_%s' % (type_value, i)]
-        df.drop(['%s_%s' % (type_value, i)], axis=1, inplace=True)
+        if type_value == 'lag':
+            df['rel_%s_%s' % (type_value, i)] = df[TARGET_COLUMN] / df['%s_%s' % (type_value, i)]
+            df.drop(['%s_%s' % (type_value, i)], axis=1, inplace=True)
+        if type_value == 'lead':
+            df['rel_%s_%s' % (type_value, i)] = df['%s_%s' % (type_value, i)]/df[TARGET_COLUMN]
+            df.drop(['%s_%s' % (type_value, i)], axis=1, inplace=True)
+
     return df
 
 
