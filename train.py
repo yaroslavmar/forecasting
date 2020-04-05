@@ -43,51 +43,58 @@ def train_model(DAY):
 
     # TRAIN-VALIDATION SPLIT
     X['date'] = pd.to_datetime(X['date'])
+    X = X[X['date'] >= '2017-01-01']
+
     DATE_TRAIN_SPLIT = get_train_test_split_date(X)
     print('Train test date split:', DATE_TRAIN_SPLIT)
-    print('Max date in train', X.date.max())
+    X.groupby('ASSET')['date'].min()
 
-    X_train = X[X['date'] <= DATE_TRAIN_SPLIT]
-    X_valid = X[X['date'] > DATE_TRAIN_SPLIT]
+    X_train = X
+    # X_train = X[X['date'] <= DATE_TRAIN_SPLIT]
+    # X_valid = X[X['date'] > DATE_TRAIN_SPLIT]
+    print('Max date in train', X_train.date.max())
 
     # ONE HOT ENCODING OF ASSETS
     categories = np.array(list(set(X['ASSET'].astype(str).values))).reshape(-1, 1)
     ohe = preprocessing.OneHotEncoder()
     ohe.fit(categories)
     X_wide_train = ohe.transform(np.array(X_train['ASSET']).reshape(-1, 1))
-    X_wide_valid = ohe.transform(np.array(X_valid['ASSET']).reshape(-1, 1))
+    # X_wide_valid = ohe.transform(np.array(X_valid['ASSET']).reshape(-1, 1))
 
     y_train = X_train['target']
-    y_valid = X_valid['target']
+    # y_valid = X_valid['target']
     X_train = X_train.drop(['target', 'date', 'ASSET'], axis=1)
-    X_valid = X_valid.drop(['target', 'date', 'ASSET'], axis=1)
+    # X_valid = X_valid.drop(['target', 'date', 'ASSET'], axis=1)
 
     labels_train = to_categorical(y_train)
-    labels_valid = to_categorical(y_valid)
+    # labels_valid = to_categorical(y_valid)
 
     # WIDE AND DEEP NEURAL NETWORK
     INPUT_WIDE = X_wide_train.shape[1]
     INPUT_DEEP = X_train.shape[1]
     input_A = keras.layers.Input(shape=[INPUT_WIDE], name="wide_input")
     input_B = keras.layers.Input(shape=[INPUT_DEEP], name="deep_input")
-    hidden1 = keras.layers.Dense(15, activation=keras.layers.ELU())(input_B)
-    hidden2 = keras.layers.Dense(10, activation=keras.layers.ELU())(hidden1)
+    hidden1 = keras.layers.Dense(20, activation=keras.layers.ELU())(input_B)
+    hidden2 = keras.layers.Dense(15, activation=keras.layers.ELU())(hidden1)
     hidden3 = keras.layers.Dense(5, activation=keras.layers.ELU())(hidden2)
-    #hidden4 = keras.layers.Dense(40, activation=keras.layers.ELU())(hidden3)
-    #hidden5 = keras.layers.Dense(20, activation=keras.layers.ELU())(hidden4)
+    # hidden4 = keras.layers.Dense(50, activation=keras.layers.ELU())(hidden3)
+    # hidden5 = keras.layers.Dense(20, activation=keras.layers.ELU())(hidden4)
     concat = keras.layers.concatenate([input_A, hidden3])
     output = keras.layers.Dense(3, activation='softmax', name="output")(concat)
     model = keras.Model(inputs=[input_A, input_B], outputs=[output])
 
     model.compile(loss="categorical_crossentropy",
-                  optimizer=keras.optimizers.SGD(0.001),
+                  # optimizer=keras.optimizers.Adam(0.0001),
+                  optimizer=keras.optimizers.RMSprop(learning_rate=0.0001),
                   metrics=["categorical_accuracy"])
+    #from keras.utils import plot_model
+    # plot_model(model, to_file='./data/%s/model/model.png' % DAY)
 
-    callback = keras.callbacks.EarlyStopping(monitor='val_loss', patience=3, mode='min')
-    history = model.fit((X_wide_train, X_train), labels_train, callbacks=[callback],
-                        epochs=100,
-                        batch_size=32,
-                        validation_data=((X_wide_valid, X_valid), labels_valid))
+    # callback = keras.callbacks.EarlyStopping(monitor='val_loss', patience=5, mode='min')
+    history = model.fit((X_wide_train, X_train), labels_train,
+                        epochs=30,
+                        batch_size=32)
+                        # validation_data=((X_wide_valid, X_valid), labels_valid))
 
     model.save('./data/%s/model/model' % DAY)
 
@@ -104,25 +111,25 @@ def train_model(DAY):
     plt.grid(True)
     plt.savefig('./data/%s/model/model_history.png' % DAY)
 
-    preds = model.predict((X_wide_valid, X_valid))
-    y_classes = preds.argmax(axis=-1)
-    np.unique(y_classes, return_counts=True)
+    # preds = model.predict((X_wide_valid, X_valid))
+    # y_classes = preds.argmax(axis=-1)
+    # np.unique(y_classes, return_counts=True)
+    #
+    # plt.figure()
+    # plt.hist(preds[:, 0], bins=50, alpha=0.5, label='Class 0')
+    # plt.hist(preds[:, 1], bins=50, alpha=0.5, label='Class 1')
+    # plt.hist(preds[:, 2], bins=50, alpha=0.5, label='Class 2')
+    # plt.title('Distribution of predicted probabilities')
+    # plt.legend()
+    # plt.grid()
+    # plt.savefig('./data/%s/model/probabilities_distribution.png' % DAY)
 
-    plt.figure()
-    plt.hist(preds[:, 0], bins=50, alpha=0.5, label='Class 0')
-    plt.hist(preds[:, 1], bins=50, alpha=0.5, label='Class 1')
-    plt.hist(preds[:, 2], bins=50, alpha=0.5, label='Class 2')
-    plt.title('Distribution of predicted probabilities')
-    plt.legend()
-    plt.grid()
-    plt.savefig('./data/%s/model/probabilities_distribution.png' % DAY)
-
-    y_pred = np.argmax(preds, axis=1)
-    target_names = ['low', 'mid', 'high']
-    model_report = classification_report(y_valid, y_pred, target_names=target_names, output_dict=True)
-    df_report = pd.DataFrame(model_report).transpose()
-    df_report = round(df_report, 4)
-    df_report.to_csv('./data/%s/model/model_report.csv' % DAY)
+    # y_pred = np.argmax(preds, axis=1)
+    # target_names = ['low', 'mid', 'high']
+    # model_report = classification_report(y_valid, y_pred, target_names=target_names, output_dict=True)
+    # df_report = pd.DataFrame(model_report).transpose()
+    # df_report = round(df_report, 4)
+    # df_report.to_csv('./data/%s/model/model_report.csv' % DAY)
 
 def baseline_model(DAY):
 
@@ -139,8 +146,9 @@ def baseline_model(DAY):
     X['date'] = pd.to_datetime(X['date'])
     DATE_TRAIN_SPLIT = get_train_test_split_date(X)
     #DATE_TRAIN_SPLIT = datetime.datetime.strptime('20170101', '%Y%m%d')
+    X_train = X
     X_train = X[X['date'] <= DATE_TRAIN_SPLIT]
-    X_valid = X[X['date'] > DATE_TRAIN_SPLIT]
+    # X_valid = X[X['date'] > DATE_TRAIN_SPLIT]
 
     # BASELINE BY ASSET
     def compute_baseline_score(df_hist):
