@@ -19,7 +19,7 @@ action = args['action']
 if __name__ == '__main__':
 
     if args['day'] == None:
-        DAY = date.today() - timedelta(2)
+        DAY = date.today() - timedelta(1)
         DAY = DAY.strftime("%Y%m%d")
     else:
         DAY = datetime.strptime(args['day'], "%Y%m%d").date().strftime("%Y%m%d")
@@ -32,7 +32,7 @@ if __name__ == '__main__':
             import_data.create_train_predict(ASSET_NAME, DAY)
 
     if action == 'train':
-        # train.baseline_model(DAY)
+        train.baseline_model(DAY)
         train.train_model(DAY)
 
 
@@ -51,15 +51,15 @@ if __name__ == '__main__':
         DAYS_BACKFILL = [x.strftime("%Y%m%d") for x in DAYS_BACKFILL]
         for DAY in DAYS_BACKFILL:
             print('Backfilling day', DAY)
-            # # IMPORT DATA
-            # print('Import data')
-            # for ASSET in ALL_ASSETS:
-            #     ASSET_NAME = ASSET.replace('/', '_')
-            #     #import_data.import_data(ASSET)
-            #     import_data.create_train_predict(ASSET_NAME, DAY)
+            # IMPORT DATA
+            print('Import data')
+            for ASSET in ALL_ASSETS:
+                ASSET_NAME = ASSET.replace('/', '_')
+                #import_data.import_data(ASSET)
+                import_data.create_train_predict(ASSET_NAME, DAY)
             # TRAIN MODELS
             print('Train models')
-            # train.baseline_model(DAY)
+            train.baseline_model(DAY)
             train.train_model(DAY)
 
     if action == 'backfill_recommendation':
